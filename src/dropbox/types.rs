@@ -1,7 +1,16 @@
 #[derive(serde::Deserialize, Debug)]
+pub struct ListAPIResult {
+    pub next_request_voucher: Option<String>,
+
+    #[serde(flatten)]
+    pub data: ListResult,
+}
+
+#[derive(serde::Deserialize, Debug)]
 pub struct ListResult {
     pub folder: Entry,
     pub folder_share_token: ShareToken,
+
     pub entries: Vec<Entry>,
     pub share_tokens: Vec<ShareToken>,
 }

@@ -24,22 +24,48 @@ impl SharedLinkClient {
     }
 
     async fn list(&self, share: &ShareToken) -> Result<ListResult, Box<dyn std::error::Error>> {
-        let resp = self
-            .client
-            .post("https://www.dropbox.com/list_shared_link_folder_entries")
-            .form(&[
+        let mut results: Vec<ListResult> = vec![];
+        let mut voucher = String::new();
+
+        loop {
+            let mut params = vec![
                 ("t", &self.token),
                 ("link_type", &share.link_type),
                 ("link_key", &share.link_key),
                 ("secure_hash", &share.secure_hash),
                 ("sub_path", &share.sub_path),
-            ])
-            .header("Cookie", ["t", &self.token].join("="))
-            .send()
-            .await?;
+            ];
+            if voucher != "" {
+                params.push(("voucher", &voucher));
+            }
 
-        resp.error_for_status_ref()?;
-        Ok(resp.json().await?)
+            let resp = self
+                .client
+                .post("https://www.dropbox.com/list_shared_link_folder_entries")
+                .header("Cookie", ["t", &self.token].join("="))
+                .form(&params)
+                .send()
+                .await?;
+
+            resp.error_for_status_ref()?;
+
+            let api_result = resp.json::<ListAPIResult>().await?;
+            results.push(api_result.data);
+
+            voucher = match api_result.next_request_voucher {
+                Some(v) => v,
+                None => break,
+            };
+        }
+
+        let mut result = results.pop().ok_or("no results")?;
+        while results.len() > 0 {
+            let r = results.pop().unwrap();
+            result.entries.extend(r.entries);
+            result.share_tokens.extend(r.share_tokens);
+        }
+
+        Ok(result)
     }
 
     #[async_recursion::async_recursion]
