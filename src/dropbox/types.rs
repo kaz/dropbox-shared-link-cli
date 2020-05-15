@@ -1,28 +1,33 @@
+pub type SharedEntity = (Entry, ShareToken);
+
 #[derive(serde::Deserialize, Debug)]
 pub struct ListAPIResult {
     pub next_request_voucher: Option<String>,
 
-    #[serde(flatten)]
-    pub data: ListResult,
-}
-
-#[derive(serde::Deserialize, Debug)]
-pub struct ListResult {
-    pub folder: Entry,
+    folder: Entry,
     pub folder_share_token: ShareToken,
 
-    pub entries: Vec<Entry>,
-    pub share_tokens: Vec<ShareToken>,
+    entries: Vec<Entry>,
+    share_tokens: Vec<ShareToken>,
 }
 
-#[derive(serde::Deserialize, Debug)]
+impl ListAPIResult {
+    pub fn pwd(&self) -> SharedEntity {
+        (self.folder.clone(), self.folder_share_token.clone())
+    }
+    pub fn entities(self) -> impl std::iter::Iterator<Item = SharedEntity> {
+        self.entries.into_iter().zip(self.share_tokens)
+    }
+}
+
+#[derive(serde::Deserialize, Clone, Debug)]
 pub struct Entry {
     pub is_dir: bool,
     pub href: String,
     pub filename: String,
 }
 
-#[derive(serde::Deserialize, Debug)]
+#[derive(serde::Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct ShareToken {
     pub link_type: String,
@@ -32,7 +37,7 @@ pub struct ShareToken {
 }
 
 impl ShareToken {
-    pub fn new<S>(link_type: S, link_key: S, secure_hash: S, sub_path: S) -> ShareToken
+    fn new<S>(link_type: S, link_key: S, secure_hash: S, sub_path: S) -> ShareToken
     where
         S: Into<String>,
     {

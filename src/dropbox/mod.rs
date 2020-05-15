@@ -5,6 +5,41 @@ mod types;
 
 use types::*;
 
+struct List<'a> {
+    client: &'a SharedLinkClient,
+    voucher: Option<String>,
+    pwd: SharedEntity,
+    iter: Box<dyn std::iter::Iterator<Item = SharedEntity>>,
+}
+
+impl<'a> List<'a> {
+    fn fetch(&mut self) -> Option<SharedEntity> {
+        let resp = self.client.list_iter(
+            &self.pwd.1,
+            match self.voucher.clone() {
+                None => return None,
+                v => v,
+            },
+        );
+
+        self.voucher = resp.voucher;
+        self.pwd = resp.pwd;
+
+        self.iter = resp.iter;
+        self.iter.next()
+    }
+}
+
+impl<'a> std::iter::Iterator for List<'a> {
+    type Item = SharedEntity;
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.iter.next() {
+            None => self.fetch(),
+            e => e,
+        }
+    }
+}
+
 pub struct SharedLinkClient {
     client: reqwest::blocking::Client,
     token: String,
@@ -23,68 +58,62 @@ impl SharedLinkClient {
         })
     }
 
-    fn list(&self, share: &ShareToken) -> Result<ListResult, Box<dyn std::error::Error>> {
-        let mut results: Vec<ListResult> = vec![];
-        let mut voucher = String::new();
-
-        loop {
-            let mut params = vec![
-                ("t", &self.token),
-                ("link_type", &share.link_type),
-                ("link_key", &share.link_key),
-                ("secure_hash", &share.secure_hash),
-                ("sub_path", &share.sub_path),
-            ];
-            if voucher != "" {
-                params.push(("voucher", &voucher));
-            }
-
-            let resp = self
-                .client
-                .post("https://www.dropbox.com/list_shared_link_folder_entries")
-                .header("Cookie", ["t", &self.token].join("="))
-                .form(&params)
-                .send()?;
-
-            resp.error_for_status_ref()?;
-
-            let api_result = resp.json::<ListAPIResult>()?;
-            results.push(api_result.data);
-
-            voucher = match api_result.next_request_voucher {
-                Some(v) => v,
-                None => break,
-            };
+    fn call_list_api(
+        &self,
+        share: &ShareToken,
+        voucher: Option<String>,
+    ) -> Result<ListAPIResult, Box<dyn std::error::Error>> {
+        let mut params = vec![
+            ("t", &self.token),
+            ("link_type", &share.link_type),
+            ("link_key", &share.link_key),
+            ("secure_hash", &share.secure_hash),
+            ("sub_path", &share.sub_path),
+        ];
+        if let Some(voucher) = &voucher {
+            params.push(("voucher", voucher));
         }
 
-        let mut result = results.pop().ok_or("no results")?;
-        while results.len() > 0 {
-            let r = results.pop().unwrap();
-            result.entries.extend(r.entries);
-            result.share_tokens.extend(r.share_tokens);
-        }
+        let resp = self
+            .client
+            .post("https://www.dropbox.com/list_shared_link_folder_entries")
+            .header("Cookie", ["t", &self.token].join("="))
+            .form(&params)
+            .send()?;
 
-        Ok(result)
+        resp.error_for_status_ref()?;
+
+        Ok(resp.json::<ListAPIResult>()?)
+    }
+
+    fn list_iter(&self, share: &ShareToken, voucher: Option<String>) -> List {
+        match self.call_list_api(share, voucher) {
+            Ok(s) => List {
+                client: self,
+                voucher: (&s).next_request_voucher.clone(),
+                pwd: s.pwd(),
+                iter: Box::new(s.entities()),
+            },
+            Err(e) => todo!("TODO"),
+        }
     }
 
     fn get_entry(
         &self,
         base: &ShareToken,
         path: &std::path::Path,
-    ) -> Result<(Entry, ShareToken), Box<dyn std::error::Error>> {
-        let result = self.list(base)?;
+    ) -> Result<SharedEntity, Box<dyn std::error::Error>> {
+        let result = self.list_iter(base, None);
 
         // to find root folder
-        if path.eq(std::path::Path::new(
-            match result.folder_share_token.sub_path.as_ref() {
-                "" => "/",
-                s => s,
-            },
-        )) {
-            return Ok((result.folder, result.folder_share_token));
+        if path.eq(std::path::Path::new(match result.pwd.1.sub_path.as_ref() {
+            "" => "/",
+            s => s,
+        })) {
+            return Ok(result.pwd);
         }
 
-        for (ent, st) in result.entries.into_iter().zip(result.share_tokens) {
+        for (ent, st) in result {
             let current = std::path::Path::new(&st.sub_path);
             if path.eq(current) {
                 return Ok((ent, st));
@@ -102,11 +131,13 @@ impl SharedLinkClient {
         S: Into<String>,
     {
         Ok(self
-            .list(
+            .list_iter(
                 &self
                     .get_entry(&self.root, std::path::Path::new(&path.into()))?
                     .1,
-            )?
-            .entries)
+                None,
+            )
+            .map(|x| x.0)
+            .collect())
     }
 }
