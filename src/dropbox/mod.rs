@@ -108,7 +108,7 @@ impl SharedLinkClient {
         }
     }
 
-    fn get_entry(
+    fn entry(
         &self,
         base: &ShareToken,
         path: &std::path::Path,
@@ -132,11 +132,18 @@ impl SharedLinkClient {
                 return Ok((ent, st));
             }
             if path.starts_with(current) {
-                return self.get_entry(&st, path);
+                return self.entry(&st, path);
             }
         }
 
-        Err(error::emit("not found"))
+        Err(error::emit(format!(
+            "`{}` was not found",
+            path.to_string_lossy()
+        )))
+    }
+
+    fn find(&self, path: String) -> Result<SharedEntity, Box<dyn std::error::Error>> {
+        self.entry(&self.root, std::path::Path::new(&path))
     }
 
     pub fn ls<S>(&self, path: S) -> Result<Vec<Entry>, Box<dyn std::error::Error>>
@@ -144,15 +151,24 @@ impl SharedLinkClient {
         S: Into<String>,
     {
         Ok(self
-            .entities(
-                &self
-                    .get_entry(&self.root, std::path::Path::new(&path.into()))?
-                    .1,
-                None,
-            )
+            .entities(&self.find(path.into())?.1, None)
             .collect::<Result<Vec<_>, _>>()?
             .into_iter()
             .map(|x| x.0)
             .collect())
+    }
+
+    pub fn get<S>(&self, path: S) -> Result<(), Box<dyn std::error::Error>>
+    where
+        S: Into<String>,
+    {
+        let path = path.into();
+        let ent = self.find(path.clone())?.0;
+        if ent.is_dir {
+            return Err(error::emit(format!("`{}` is directory", path)));
+        }
+
+        println!("{}", ent.href);
+        Ok(())
     }
 }

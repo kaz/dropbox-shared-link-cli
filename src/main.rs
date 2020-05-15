@@ -32,7 +32,7 @@ struct Ls {
 /// download file
 #[derive(Clap, Debug)]
 struct Get {
-    /// Which file to download (e.g. /ABC123/D/in/sample-1.in )
+    /// Which file to download (e.g. /ABC123/D/in/in01.txt )
     path: String,
 }
 
@@ -44,10 +44,10 @@ fn main() {
 
     match opts.subcmd {
         SubCommand::Ls(Ls { path }) => {
-            for ent in client.ls(path).expect("ls failed") {
+            for ent in client.ls(path).expect("failed to ls") {
                 println!("{} {}", if ent.is_dir { "D" } else { "F" }, ent.filename)
             }
         }
-        SubCommand::Get(Get { path }) => unimplemented!(),
+        SubCommand::Get(Get { path }) => client.get(path).expect("failed to get"),
     }
 }
