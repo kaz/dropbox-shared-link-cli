@@ -37,11 +37,11 @@ pub struct ShareToken {
 }
 
 impl ShareToken {
-    fn new<S>(link_type: S, link_key: S, secure_hash: S, sub_path: S) -> ShareToken
+    fn new<S>(link_type: S, link_key: S, secure_hash: S, sub_path: S) -> Self
     where
         S: Into<String>,
     {
-        ShareToken {
+        Self {
             link_type: link_type.into(),
             link_key: link_key.into(),
             secure_hash: secure_hash.into(),
@@ -49,7 +49,7 @@ impl ShareToken {
         }
     }
 
-    pub fn from_url<S>(url: S) -> Option<ShareToken>
+    pub fn from_url<S>(url: S) -> Option<Self>
     where
         S: Into<String>,
     {
@@ -65,7 +65,7 @@ impl ShareToken {
             return None;
         }
 
-        Some(ShareToken::new(
+        Some(Self::new(
             "s",
             v[4],
             v[5],

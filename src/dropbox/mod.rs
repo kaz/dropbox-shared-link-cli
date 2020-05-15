@@ -45,25 +45,20 @@ impl<'a> std::iter::Iterator for SharedEntries<'a> {
     }
 }
 
-pub struct SharedLinkClient {
+struct APIClient {
     client: reqwest::blocking::Client,
     token: String,
-    root: ShareToken,
 }
 
-impl SharedLinkClient {
-    pub fn new<S>(url: S) -> Result<SharedLinkClient, Box<dyn std::error::Error>>
-    where
-        S: Into<String>,
-    {
-        Ok(SharedLinkClient {
+impl APIClient {
+    fn new() -> Self {
+        Self {
             client: reqwest::blocking::Client::new(),
             token: token::generate(),
-            root: ShareToken::from_url(url).ok_or("failed to parse specified URL")?,
-        })
+        }
     }
 
-    fn call_list_api(
+    fn list_shared_link_folder_entries(
         &self,
         share: &ShareToken,
         voucher: Option<String>,
@@ -90,9 +85,26 @@ impl SharedLinkClient {
 
         Ok(resp.json::<ListAPIResult>()?)
     }
+}
+
+pub struct SharedLinkClient {
+    client: APIClient,
+    root: ShareToken,
+}
+
+impl SharedLinkClient {
+    pub fn new<S>(url: S) -> Result<Self, Box<dyn std::error::Error>>
+    where
+        S: Into<String>,
+    {
+        Ok(Self {
+            client: APIClient::new(),
+            root: ShareToken::from_url(url).ok_or("failed to parse specified URL")?,
+        })
+    }
 
     fn entities(&self, share: &ShareToken, voucher: Option<String>) -> SharedEntries {
-        match self.call_list_api(share, voucher) {
+        match self.client.list_shared_link_folder_entries(share, voucher) {
             Ok(s) => SharedEntries {
                 client: self,
                 voucher: (&s).next_request_voucher.clone(),
@@ -174,7 +186,6 @@ impl SharedLinkClient {
             return Err(error::emit(format!("`{}` is directory", path)));
         }
 
-        println!("{}", ent.href);
         Ok(())
     }
 }
