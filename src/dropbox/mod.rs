@@ -80,10 +80,23 @@ impl APIClient {
             .header("Cookie", ["t", &self.token].join("="))
             .form(&params)
             .send()?;
-
         resp.error_for_status_ref()?;
 
         Ok(resp.json::<ListAPIResult>()?)
+    }
+
+    fn dl<P>(&self, ent: &Entry, local_path: P) -> Result<u64, Box<dyn std::error::Error>>
+    where
+        P: AsRef<std::path::Path>,
+    {
+        let mut resp = self
+            .client
+            .get(&ent.href)
+            .header("Cookie", ["t", &self.token].join("="))
+            .send()?;
+        resp.error_for_status_ref()?;
+
+        Ok(resp.copy_to(&mut { std::fs::File::create(local_path)? })?)
     }
 }
 
@@ -154,18 +167,20 @@ impl SharedLinkClient {
         )))
     }
 
-    fn find(&self, path: String) -> Result<SharedEntity, Box<dyn std::error::Error>> {
+    fn find(&self, path: &std::path::Path) -> Result<SharedEntity, Box<dyn std::error::Error>> {
         self.entry(&self.root, std::path::Path::new(&path))
     }
 
-    pub fn ls<S>(&self, path: S) -> Result<Vec<Entry>, Box<dyn std::error::Error>>
+    pub fn ls<P>(&self, path: P) -> Result<Vec<Entry>, Box<dyn std::error::Error>>
     where
-        S: Into<String>,
+        P: AsRef<std::path::Path>,
     {
-        let path = path.into();
-        let (ent, st) = &self.find(path.clone())?;
+        let (ent, st) = &self.find(path.as_ref())?;
         if !ent.is_dir {
-            return Err(error::emit(format!("`{}` is not directory", path)));
+            return Err(error::emit(format!(
+                "`{}` is not directory",
+                path.as_ref().to_string_lossy()
+            )));
         }
 
         Ok(self
@@ -176,16 +191,18 @@ impl SharedLinkClient {
             .collect())
     }
 
-    pub fn get<S>(&self, path: S) -> Result<(), Box<dyn std::error::Error>>
+    pub fn cp<P>(&self, remote_path: P, local_path: P) -> Result<u64, Box<dyn std::error::Error>>
     where
-        S: Into<String>,
+        P: AsRef<std::path::Path>,
     {
-        let path = path.into();
-        let ent = self.find(path.clone())?.0;
+        let ent = self.find(remote_path.as_ref())?.0;
         if ent.is_dir {
-            return Err(error::emit(format!("`{}` is directory", path)));
+            return Err(error::emit(format!(
+                "`{}` is directory",
+                remote_path.as_ref().to_string_lossy()
+            )));
         }
 
-        Ok(())
+        self.client.dl(&ent, local_path)
     }
 }

@@ -16,24 +16,27 @@ struct Opts {
     subcmd: SubCommand,
 }
 
-#[derive(clap::Clap, Debug)]
+#[derive(Clap, Debug)]
 enum SubCommand {
     Ls(Ls),
-    Get(Get),
+    Cp(Cp),
 }
 
 /// list files/directories
 #[derive(Clap, Debug)]
 struct Ls {
-    /// Where to ls (e.g. /ABC123/D )
+    /// Which directory to list (e.g. /ABC123/D )
     path: String,
 }
 
 /// download file
 #[derive(Clap, Debug)]
-struct Get {
+struct Cp {
     /// Which file to download (e.g. /ABC123/D/in/in01.txt )
-    path: String,
+    remote_path: String,
+
+    /// Where to save file (e.g. $HOME/Downloads/in.txt )
+    local_path: String,
 }
 
 fn main() {
@@ -48,6 +51,14 @@ fn main() {
                 println!("{} {}", if ent.is_dir { "D" } else { "F" }, ent.filename)
             }
         }
-        SubCommand::Get(Get { path }) => client.get(path).expect("failed to get"),
+        SubCommand::Cp(Cp {
+            remote_path,
+            local_path,
+        }) => {
+            println!(
+                "{} bytes downloaded",
+                client.cp(remote_path, local_path).expect("failed to get")
+            );
+        }
     }
 }
