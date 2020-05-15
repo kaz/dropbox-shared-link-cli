@@ -150,8 +150,14 @@ impl SharedLinkClient {
     where
         S: Into<String>,
     {
+        let path = path.into();
+        let (ent, st) = &self.find(path.clone())?;
+        if !ent.is_dir {
+            return Err(error::emit(format!("`{}` is not directory", path)));
+        }
+
         Ok(self
-            .entities(&self.find(path.into())?.1, None)
+            .entities(&st, None)
             .collect::<Result<Vec<_>, _>>()?
             .into_iter()
             .map(|x| x.0)
