@@ -5,17 +5,22 @@ mod types;
 
 use types::*;
 
-struct List<'a> {
+type SharedEntryResult = Result<SharedEntity, Box<dyn std::error::Error>>;
+
+struct SharedEntries<'a> {
     client: &'a SharedLinkClient,
     voucher: Option<String>,
-    pwd: SharedEntity,
-    iter: Box<dyn std::iter::Iterator<Item = SharedEntity>>,
+    pwd: Option<SharedEntity>,
+    iter: Box<dyn std::iter::Iterator<Item = SharedEntryResult>>,
 }
 
-impl<'a> List<'a> {
-    fn fetch(&mut self) -> Option<SharedEntity> {
-        let resp = self.client.list_iter(
-            &self.pwd.1,
+impl<'a> SharedEntries<'a> {
+    fn fetch(&mut self) -> Option<SharedEntryResult> {
+        let resp = self.client.entities(
+            match &self.pwd {
+                None => return None,
+                Some(v) => &v.1,
+            },
             match self.voucher.clone() {
                 None => return None,
                 v => v,
@@ -24,14 +29,14 @@ impl<'a> List<'a> {
 
         self.voucher = resp.voucher;
         self.pwd = resp.pwd;
-
         self.iter = resp.iter;
+
         self.iter.next()
     }
 }
 
-impl<'a> std::iter::Iterator for List<'a> {
-    type Item = SharedEntity;
+impl<'a> std::iter::Iterator for SharedEntries<'a> {
+    type Item = SharedEntryResult;
     fn next(&mut self) -> Option<Self::Item> {
         match self.iter.next() {
             None => self.fetch(),
@@ -86,15 +91,20 @@ impl SharedLinkClient {
         Ok(resp.json::<ListAPIResult>()?)
     }
 
-    fn list_iter(&self, share: &ShareToken, voucher: Option<String>) -> List {
+    fn entities(&self, share: &ShareToken, voucher: Option<String>) -> SharedEntries {
         match self.call_list_api(share, voucher) {
-            Ok(s) => List {
+            Ok(s) => SharedEntries {
                 client: self,
                 voucher: (&s).next_request_voucher.clone(),
-                pwd: s.pwd(),
-                iter: Box::new(s.entities()),
+                pwd: Some(s.pwd()),
+                iter: Box::new(s.entities().map(|x| Ok(x))),
             },
-            Err(e) => todo!("TODO"),
+            Err(e) => SharedEntries {
+                client: self,
+                voucher: None,
+                pwd: None,
+                iter: Box::new(vec![Err(e)].into_iter()),
+            },
         }
     }
 
@@ -103,17 +113,20 @@ impl SharedLinkClient {
         base: &ShareToken,
         path: &std::path::Path,
     ) -> Result<SharedEntity, Box<dyn std::error::Error>> {
-        let result = self.list_iter(base, None);
+        let entites = self.entities(base, None);
 
         // to find root folder
-        if path.eq(std::path::Path::new(match result.pwd.1.sub_path.as_ref() {
-            "" => "/",
-            s => s,
-        })) {
-            return Ok(result.pwd);
+        if let Some(pwd) = &entites.pwd {
+            if path.eq(std::path::Path::new(match pwd.1.sub_path.as_ref() {
+                "" => "/",
+                s => s,
+            })) {
+                return Ok(pwd.clone());
+            }
         }
 
-        for (ent, st) in result {
+        for x in entites {
+            let (ent, st) = x?;
             let current = std::path::Path::new(&st.sub_path);
             if path.eq(current) {
                 return Ok((ent, st));
@@ -131,12 +144,14 @@ impl SharedLinkClient {
         S: Into<String>,
     {
         Ok(self
-            .list_iter(
+            .entities(
                 &self
                     .get_entry(&self.root, std::path::Path::new(&path.into()))?
                     .1,
                 None,
             )
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
             .map(|x| x.0)
             .collect())
     }
