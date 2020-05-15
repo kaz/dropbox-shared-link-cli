@@ -6,7 +6,7 @@ mod types;
 use types::*;
 
 pub struct SharedLinkClient {
-    client: reqwest::Client,
+    client: reqwest::blocking::Client,
     token: String,
     root: ShareToken,
 }
@@ -17,13 +17,13 @@ impl SharedLinkClient {
         S: Into<String>,
     {
         Ok(SharedLinkClient {
-            client: reqwest::Client::new(),
+            client: reqwest::blocking::Client::new(),
             token: token::generate(),
             root: ShareToken::from_url(url).ok_or("failed to parse specified URL")?,
         })
     }
 
-    async fn list(&self, share: &ShareToken) -> Result<ListResult, Box<dyn std::error::Error>> {
+    fn list(&self, share: &ShareToken) -> Result<ListResult, Box<dyn std::error::Error>> {
         let mut results: Vec<ListResult> = vec![];
         let mut voucher = String::new();
 
@@ -44,12 +44,11 @@ impl SharedLinkClient {
                 .post("https://www.dropbox.com/list_shared_link_folder_entries")
                 .header("Cookie", ["t", &self.token].join("="))
                 .form(&params)
-                .send()
-                .await?;
+                .send()?;
 
             resp.error_for_status_ref()?;
 
-            let api_result = resp.json::<ListAPIResult>().await?;
+            let api_result = resp.json::<ListAPIResult>()?;
             results.push(api_result.data);
 
             voucher = match api_result.next_request_voucher {
@@ -68,13 +67,12 @@ impl SharedLinkClient {
         Ok(result)
     }
 
-    #[async_recursion::async_recursion]
-    async fn get_entry(
+    fn get_entry(
         &self,
         base: &ShareToken,
         path: &std::path::Path,
     ) -> Result<(Entry, ShareToken), Box<dyn std::error::Error>> {
-        let result = self.list(base).await?;
+        let result = self.list(base)?;
 
         // to find root folder
         if path.eq(std::path::Path::new(
@@ -92,25 +90,23 @@ impl SharedLinkClient {
                 return Ok((ent, st));
             }
             if path.starts_with(current) {
-                return self.get_entry(&st, path).await;
+                return self.get_entry(&st, path);
             }
         }
 
         Err(error::emit("not found"))
     }
 
-    pub async fn ls<S>(&self, path: S) -> Result<Vec<Entry>, Box<dyn std::error::Error>>
+    pub fn ls<S>(&self, path: S) -> Result<Vec<Entry>, Box<dyn std::error::Error>>
     where
         S: Into<String>,
     {
         Ok(self
             .list(
                 &self
-                    .get_entry(&self.root, std::path::Path::new(&path.into()))
-                    .await?
+                    .get_entry(&self.root, std::path::Path::new(&path.into()))?
                     .1,
-            )
-            .await?
+            )?
             .entries)
     }
 }
