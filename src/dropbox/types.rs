@@ -1,5 +1,7 @@
 #[derive(serde::Deserialize, Debug)]
 pub struct ListResult {
+    pub folder: Entry,
+    pub folder_share_token: ShareToken,
     pub entries: Vec<Entry>,
     pub share_tokens: Vec<ShareToken>,
 }

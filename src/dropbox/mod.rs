@@ -49,6 +49,17 @@ impl SharedLinkClient {
         path: &std::path::Path,
     ) -> Result<(Entry, ShareToken), Box<dyn std::error::Error>> {
         let result = self.list(base).await?;
+
+        // to find root folder
+        if path.eq(std::path::Path::new(
+            match result.folder_share_token.sub_path.as_ref() {
+                "" => "/",
+                s => s,
+            },
+        )) {
+            return Ok((result.folder, result.folder_share_token));
+        }
+
         for (ent, st) in result.entries.into_iter().zip(result.share_tokens) {
             let current = std::path::Path::new(&st.sub_path);
             if path.eq(current) {
@@ -58,6 +69,7 @@ impl SharedLinkClient {
                 return self.get_entry(&st, path).await;
             }
         }
+
         Err(error::emit("not found"))
     }
 
