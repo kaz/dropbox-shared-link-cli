@@ -91,7 +91,7 @@ impl APIClient {
     {
         let mut resp = self
             .client
-            .get(&ent.href)
+            .get(&ent.href.replace("/sh/", "/sh/raw/"))
             .header("Cookie", ["t", &self.token].join("="))
             .send()?;
         resp.error_for_status_ref()?;
@@ -202,6 +202,11 @@ impl SharedLinkClient {
                 remote_path.as_ref().to_string_lossy()
             )));
         }
+
+        println!(
+            "downloading `{}` ...",
+            remote_path.as_ref().to_string_lossy()
+        );
 
         self.client.dl(&ent, local_path)
     }
