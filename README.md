@@ -1,6 +1,13 @@
 # dropbox-shared-link-cli
 
+[![](https://github.com/kaz/dropbox-shared-link-cli/workflows/release/badge.svg)](https://github.com/kaz/dropbox-shared-link-cli/actions?query=workflow%3Arelease)
+[![](https://img.shields.io/github/v/release/kaz/dropbox-shared-link-cli)](https://github.com/kaz/dropbox-shared-link-cli/releases)
+
 A command line tool that downloads files from Dropbox's shared link
+
+## Download
+
+Available on [releases](https://github.com/kaz/dropbox-shared-link-cli/releases) page
 
 ## Usage
 
